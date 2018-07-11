@@ -1,6 +1,6 @@
-# toggl-watcher
+# toggl-watcher (tg)
 
-Command line tool to track time in toggl based on local filesystem writes
+Command line tool to track time in Toggl based on local filesystem writes
 
 This utility uses (or will use, when I implement it) inotify to watch
 directories under one or more user-specified project directories (e.g.
