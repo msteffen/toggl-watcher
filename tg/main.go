@@ -28,7 +28,7 @@ func resume() *cobra.Command {
 		Use:   "resume",
 		Short: "Resume watching directories for writes (should run on startup)",
 		Long: "Resume runs in the background, watching the directories indicated " +
-			" in %s/%s for writes and either ends/continues the associated Toggl " +
+			"in %s/%s for writes and either ends/continues the associated Toggl " +
 			"time entries",
 		Run: BoundedCommand(0, 0, func(_ []string) error { return nil }),
 	}
@@ -52,7 +52,7 @@ func tick() *cobra.Command {
 		Short: "Note work on a project (same as receiving a write notification)",
 		Long:  "Advance the \"working\" timestamp, and possibly switch projects",
 		Run: BoundedCommand(1, 1, func(args []string) error {
-			s, err := status.CurrentStatus(statusDir)
+			s, err := status.Read(statusDir)
 			if err != nil {
 				return err
 			}

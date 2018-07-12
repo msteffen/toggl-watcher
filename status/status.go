@@ -1,9 +1,9 @@
+// status is an internal library for interacting with Toggl.
 package status
 
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path"
 	"time"
@@ -15,7 +15,7 @@ var (
 	maxTickGap = 24 * time.Minute
 )
 
-type status struct {
+type Status struct {
 	// The directory where tg is storing its status
 	statusDir string
 
@@ -26,9 +26,11 @@ type status struct {
 	projectName string
 	// projectID is ID of the same toggl project
 	projectID string
+	// timeEntryID is the ID of the currently open Toggl time entry (if any)
+	timeEntryID string
 }
 
-func (s *status) MarshalJSON() ([]byte, error) {
+func (s *Status) MarshalJSON() ([]byte, error) {
 	output := map[string]string{
 		"tick":         s.latestTick.Format(time.RFC3339),
 		"project_name": s.projectName,
@@ -37,7 +39,7 @@ func (s *status) MarshalJSON() ([]byte, error) {
 	return json.Marshal(output)
 }
 
-func (s *status) UnmarshalJSON(data []byte) error {
+func (s *Status) UnmarshalJSON(data []byte) error {
 	fields := make(map[string]string)
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
@@ -52,7 +54,7 @@ func (s *status) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func CurrentStatus(statusDir string) (*status, error) {
+func Read(statusDir string) (*Status, error) {
 	if _, err := os.Stat(statusDir); err != nil {
 		return nil, fmt.Errorf("could not stat status directory at %q: %v", statusDir, err)
 	}
@@ -61,7 +63,7 @@ func CurrentStatus(statusDir string) (*status, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &status{
+	result := &Status{
 		statusDir: statusDir,
 	}
 	if err := json.NewDecoder(f).Decode(result); err != nil {
@@ -70,7 +72,7 @@ func CurrentStatus(statusDir string) (*status, error) {
 	return result, nil
 }
 
-func (s *status) Save() error {
+func (s *Status) Save() error {
 	if _, err := os.Stat(s.statusDir); err != nil {
 		if err := os.MkdirAll(s.statusDir, 0755); err != nil {
 			return fmt.Errorf("could not create state dir at %q: %v", s.statusDir, err)
@@ -84,7 +86,7 @@ func (s *status) Save() error {
 	return json.NewEncoder(f).Encode(s)
 }
 
-func (s *status) Tick(projectName string) error {
+func (s *Status) Tick(projectName string) error {
 	now := time.Now()
 	if now.Sub(s.latestTick) > maxTickGap {
 		s.Stop(s.latestTick)
@@ -95,14 +97,8 @@ func (s *status) Tick(projectName string) error {
 	return s.Save()
 }
 
-func (s *status) Stop(t time.Time) error {
-	req, err := http.NewRequest("PUT",
-		fmt.Sprintf("https://www.toggl.com/api/v8/time_entries/%s/stop"), nil)
-	if err != nil {
-		return fmt.Errorf("could not construct stop request: %v", err)
-	}
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	fmt.Printf("%+v\n", resp)
+func (s *Status) Stop(t time.Time) error {
+	resp, err := Post(fmt.Sprintf("time_entries/%s/stop", s.timeEntryID), "")
+	fmt.Printf("%+v (%v)\n", resp, err)
 	return err
 }
