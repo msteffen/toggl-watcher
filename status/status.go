@@ -1,4 +1,4 @@
-// status is an internal library for interacting with Toggl.
+// Package status is an internal library for interacting with Toggl.
 package status
 
 import (
@@ -9,15 +9,20 @@ import (
 	"time"
 )
 
+const (
+	tickFile = "tick"
+)
+
 var (
 	// maxTickGap is the amount of time such that if the last tick is farther than
 	// this in the past, the previous time entry will be stopped
 	maxTickGap = 24 * time.Minute
 )
 
+// Status is the data structure that toggl-watcher uses to track your work
 type Status struct {
-	// The directory where tg is storing its status
-	statusDir string
+	// The directory where tg is storing its state
+	tgStateDir string
 
 	// latestTick is the last time a write was registered in a project directory
 	latestTick time.Time
@@ -30,6 +35,7 @@ type Status struct {
 	timeEntryID string
 }
 
+// MarshalJSON allows Status to implement the json.Marshaller interface
 func (s *Status) MarshalJSON() ([]byte, error) {
 	output := map[string]string{
 		"tick":         s.latestTick.Format(time.RFC3339),
@@ -39,6 +45,7 @@ func (s *Status) MarshalJSON() ([]byte, error) {
 	return json.Marshal(output)
 }
 
+// UnmarshalJSON allows Status to implement the json.Unmarshaller interface
 func (s *Status) UnmarshalJSON(data []byte) error {
 	fields := make(map[string]string)
 	if err := json.Unmarshal(data, &fields); err != nil {
@@ -54,17 +61,18 @@ func (s *Status) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func Read(statusDir string) (*Status, error) {
-	if _, err := os.Stat(statusDir); err != nil {
-		return nil, fmt.Errorf("could not stat status directory at %q: %v", statusDir, err)
+// Read reads the latest tick info from tgStateDir/tick into memory
+func Read(tgStateDir string) (*Status, error) {
+	if _, err := os.Stat(tgStateDir); err != nil {
+		return nil, fmt.Errorf("could not stat status directory at %q: %v", tgStateDir, err)
 	}
-	tickFile := path.Join(statusDir, "tick")
+	tickFile := path.Join(tgStateDir, tickFile)
 	f, err := os.Open(tickFile)
 	if err != nil {
 		return nil, err
 	}
 	result := &Status{
-		statusDir: statusDir,
+		tgStateDir: tgStateDir,
 	}
 	if err := json.NewDecoder(f).Decode(result); err != nil {
 		return nil, err
@@ -72,20 +80,23 @@ func Read(statusDir string) (*Status, error) {
 	return result, nil
 }
 
+// Save persists 's' to the file 's.tgStateDir/tick
 func (s *Status) Save() error {
-	if _, err := os.Stat(s.statusDir); err != nil {
-		if err := os.MkdirAll(s.statusDir, 0755); err != nil {
-			return fmt.Errorf("could not create state dir at %q: %v", s.statusDir, err)
+	if _, err := os.Stat(s.tgStateDir); err != nil {
+		if err := os.MkdirAll(s.tgStateDir, 0755); err != nil {
+			return fmt.Errorf("could not create state dir at %q: %v", s.tgStateDir, err)
 		}
 	}
-	tickFile := path.Join(s.statusDir, "tick")
-	f, err := os.OpenFile(tickFile, os.O_CREATE|os.O_WRONLY, 0755)
+	tickFile := path.Join(s.tgStateDir, tickFile)
+	f, err := os.OpenFile(tickFile, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("could not create status file at %q: %v", tickFile, err)
 	}
 	return json.NewEncoder(f).Encode(s)
 }
 
+// Tick notifies 's' that a new work event has occurred on the project
+// 'projectName'
 func (s *Status) Tick(projectName string) error {
 	now := time.Now()
 	if now.Sub(s.latestTick) > maxTickGap {
@@ -97,6 +108,8 @@ func (s *Status) Tick(projectName string) error {
 	return s.Save()
 }
 
+// Stop is a helper function that causes 's' to tell toggl that work in the
+// current Toggl time event has stopped
 func (s *Status) Stop(t time.Time) error {
 	resp, err := Post(fmt.Sprintf("time_entries/%s/stop", s.timeEntryID), "")
 	fmt.Printf("%+v (%v)\n", resp, err)
