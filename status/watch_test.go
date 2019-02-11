@@ -329,5 +329,8 @@ func TestMain(m *testing.M) {
 		defer os.RemoveAll(testingStateDir) // defer ensures this happens after panic
 	}
 	errCode := m.Run()
+	if *cleanUpFlag {
+		os.RemoveAll(testingStateDir) // os.Exit means deferred RemoveAll won't run
+	}
 	os.Exit(errCode)
 }

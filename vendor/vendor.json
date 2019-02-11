@@ -1,0 +1,37 @@
+{
+	"comment": "",
+	"ignore": "",
+	"package": [
+		{
+			"checksumSHA1": "zkm/a7U83VXJnEFfdwZDC7NYfDY=",
+			"path": "github.com/glycerine/goconvey/convey/assertions/oglematchers",
+			"revision": "46e3a41ad493026acfcdc0deeba3b92550dd6642",
+			"revisionTime": "2018-07-28T07:42:45Z"
+		},
+		{
+			"checksumSHA1": "faVDjf1RapE0bupwYUax/v5wtSE=",
+			"path": "github.com/glycerine/goconvey/convey/assertions/oglemock",
+			"revision": "46e3a41ad493026acfcdc0deeba3b92550dd6642",
+			"revisionTime": "2018-07-28T07:42:45Z"
+		},
+		{
+			"checksumSHA1": "YM662wJfG3XS1EfEWpGzcjGh0po=",
+			"path": "github.com/glycerine/goconvey/convey/assertions/ogletest",
+			"revision": "46e3a41ad493026acfcdc0deeba3b92550dd6642",
+			"revisionTime": "2018-07-28T07:42:45Z"
+		},
+		{
+			"checksumSHA1": "yIkYzW7bzAD81zHyuCNmEj4+oxQ=",
+			"path": "github.com/gopherjs/gopherjs/js",
+			"revision": "d547d1d9531ed93dbdebcbff7f83e7c876a1e0ee",
+			"revisionTime": "2018-11-03T18:53:06Z"
+		},
+		{
+			"checksumSHA1": "BrYBe2DRifxETY14JmGBwL+m+mA=",
+			"path": "github.com/jtolds/gls",
+			"revision": "b4936e06046bbecbb94cae9c18127ebe510a2cb9",
+			"revisionTime": "2018-11-10T20:28:10Z"
+		}
+	],
+	"rootPath": "github.com/msteffen/toggl-watcher"
+}

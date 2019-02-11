@@ -86,8 +86,10 @@ func lock(fd int) error {
 func (w *Watch) addWatch(path string) error {
 	// Walk the directory tree under 'path'
 	err := fp.Walk(path, func(path string, info os.FileInfo, err error) error {
+		fmt.Printf("might watch %q\n", path)
 		// Only watch directories
 		if !info.IsDir() {
+			fmt.Printf("%q is not a dir\n", path)
 			return nil
 		}
 
@@ -95,6 +97,7 @@ func (w *Watch) addWatch(path string) error {
 		// TODO make this flag-controlled
 		filename := p.Base(path)
 		if strings.HasPrefix(filename, ".") {
+			fmt.Printf("%q is hidden\n", path)
 			return fp.SkipDir
 		}
 
@@ -102,17 +105,20 @@ func (w *Watch) addWatch(path string) error {
 		// with go projects
 		if filename == "vendor" {
 			if _, err := os.Stat(p.Join(p.Dir(path), "Gopkg.lock")); err == nil {
+				fmt.Printf("%q is a dep vendor dir\n", path)
 				return fp.SkipDir // vendor dir managed by 'dep'
 			}
 			if _, err := os.Stat(p.Join(path, "vendor.json")); err == nil {
+				fmt.Printf("%q is a govendor dir\n", path)
 				return fp.SkipDir // vendor dir managed by 'govendor'
 			}
 		}
 
 		// Add inotify watch to this child
+		fmt.Printf("adding watch for %q\n", path)
 		wd, err := unix.InotifyAddWatch(w.inotifyFd, path,
 			unix.IN_CREATE|unix.IN_DELETE|unix.IN_MODIFY|
-				unix.IN_MOVED_FROM|unix.IN_MOVED_TO|
+				unix.IN_MOVED_TO|
 				unix.IN_DELETE_SELF|unix.IN_DELETE_SELF)
 		if err != nil {
 			return fmt.Errorf("could not add watch: %v", err)
@@ -146,7 +152,11 @@ func (w *Watch) readEvents(eventChan chan<- struct{}) {
 		}
 		idx := 0
 		for idx < n {
+			fmt.Printf("idx: %d -> ", idx)
 			event := (*unix.InotifyEvent)(unsafe.Pointer(&buf[idx]))
+			if idx+unix.SizeofInotifyEvent+int(event.Len) > n {
+				fmt.Fprint(os.Stderr, "short read\n")
+			}
 			idx += unix.SizeofInotifyEvent
 
 			// extract name from stat struct
@@ -158,6 +168,7 @@ func (w *Watch) readEvents(eventChan chan<- struct{}) {
 				}
 			}
 			idx += int(event.Len)
+			fmt.Printf("%d/%d\n", idx, n)
 			path := p.Clean(p.Join(w.wdToPath[int(event.Wd)], name))
 
 			// If event involves creating or moving a subdirectory, add watches for
@@ -171,6 +182,13 @@ func (w *Watch) readEvents(eventChan chan<- struct{}) {
 				}
 				if fInfo.IsDir() {
 					w.addWatch(path) // Add inotify watch to this child
+				}
+			}
+			if event.Mask&(unix.IN_DELETE) > 0 {
+				for _, p2 := range w.wdToPath {
+					if path == p2 {
+						fmt.Printf("There should be an IN_IGNORE event for %s\n", path)
+					}
 				}
 			}
 

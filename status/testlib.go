@@ -99,7 +99,7 @@ func Render(e *unix.InotifyEvent, path string) string {
 	} else {
 		eType = eType[:len(eType)-1]
 	}
-	result := fmt.Sprintf("%s %q", eType, path)
+	result := fmt.Sprintf("%s (0x%x) %q", eType, e.Mask, path)
 
 	if e.Mask&(unix.IN_CREATE|unix.IN_MODIFY) > 0 {
 		var fInfo os.FileInfo

@@ -1,0 +1,2 @@
+If a new child directory is created, we must add it to the inotify watch
+- If a watched directory is deleted, we must remove its watch descriptor from the map and the dir itself from the set of dirs being watched

@@ -17,5 +17,15 @@ Some features that I hope to support:
   time entries.
 
 - If you start a time entry with toggl-watcher, and then end that entry via the
-  toggl website and start a new time entry, toggl-watcher shouldn't interfere 
+  toggl website and start a new time entry, toggl-watcher shouldn't interfere
   with the manually
+
+---
+
+**Update**: I've kind of abanoned the main goal of this project for now and am
+spending all of my time refining the inotify library in findtest, which is
+proving to be the hardest part. I haven't tested it, but I'm not convinced that
+go libraries (`fdnotify` in particular) handle the racy parts of this well
+(i.e. ensuring that a stream of updates is generated that is complete—i.e.
+replaying it in another location would be sufficient to clone a watched
+directory). I should test this, though.
