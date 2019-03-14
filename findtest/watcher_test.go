@@ -22,12 +22,12 @@ func Check(t testing.TB, b bool, args ...interface{}) {
 
 func CheckEq(t testing.TB, got, want interface{}) {
 	t.Helper()
-	if wantDirs, ok := want.(dirs); ok {
-		gotDirs, ok := got.(dirs)
+	if wantpaths, ok := want.(paths); ok {
+		gotpaths, ok := got.(paths)
 		if !ok {
-			t.Fatalf("wanted value of type 'dirs', but got %T", got)
+			t.Fatalf("wanted value of type 'paths', but got %T", got)
 		}
-		CheckNil(t, wantDirs.ConfirmEq(gotDirs))
+		CheckNil(t, wantpaths.ConfirmEq(gotpaths))
 		return
 	}
 	Check(t, got == want, "Expected %v\n   But got %v", want, got)
@@ -45,9 +45,9 @@ func CheckNotNil(t testing.TB, err error) {
 	}
 }
 
-type dirs map[string]struct{}
+type paths map[string]struct{}
 
-func (d dirs) String() string {
+func (d paths) String() string {
 	var buf bytes.Buffer
 	var sep string
 	for k := range d {
@@ -59,10 +59,10 @@ func (d dirs) String() string {
 }
 
 // ConfirmEq returns 'nil' if 'd' and 'other' are equal, or an error otherwise
-func (d dirs) ConfirmEq(other dirs) error {
+func (d paths) ConfirmEq(other paths) error {
 	if len(other) != len(d) {
 		// slight abuse of error, but this only really used by tests
-		return fmt.Errorf("expected 'dirs' of size %d, but was %d:\n%v\n%v",
+		return fmt.Errorf("expected 'paths' of size %d, but was %d:\n%v\n%v",
 			len(d), len(other), d, other)
 	}
 	for k := range d {
@@ -73,15 +73,15 @@ func (d dirs) ConfirmEq(other dirs) error {
 	return nil // success
 }
 
-func (d dirs) Copy() dirs {
-	var result dirs = make(map[string]struct{})
+func (d paths) Copy() paths {
+	var result paths = make(map[string]struct{})
 	for s := range d {
 		result[s] = struct{}{}
 	}
 	return result
 }
 
-func (d dirs) Add(path string) {
+func (d paths) Add(path string) {
 	for path = p.Clean(path); path != ""; path = p.Dir(path) {
 		if _, ok := d[path]; ok {
 			break // all other parents have been added
@@ -90,7 +90,7 @@ func (d dirs) Add(path string) {
 	}
 }
 
-func (d dirs) Rm(path string) {
+func (d paths) Rm(path string) {
 	for f := range d {
 		if strings.HasPrefix(f, path) {
 			delete(d, f)
@@ -98,15 +98,13 @@ func (d dirs) Rm(path string) {
 	}
 }
 
-func (d dirs) Pick(except ...string) string {
+func (d paths) Pick(except ...string) string {
 	exceptM := make(map[string]struct{})
 	for _, e := range except {
 		exceptM[e] = struct{}{}
 	}
 
 	i := testRand.Int31n(int32(len(d) - len(exceptM)))
-	// 	fmt.Printf("len(d): %d | len(exceptM): %d | len(d) - len(exceptM): %d | i : %d\n",
-	// 		len(d), len(exceptM), len(d)-len(exceptM), i)
 	var f string
 	for f = range d {
 		if _, ok := exceptM[f]; ok {
@@ -162,26 +160,23 @@ func TestErrorNoRoot(t *testing.T) {
 
 func TestFuzz(t *testing.T) {
 	CheckNil(t, os.RemoveAll("base"))
-	var expected dirs = map[string]struct{}{
+	var expected paths = map[string]struct{}{
 		"base": struct{}{},
 	}
 	actual := expected.Copy()
-	expectedStateCh := make(chan dirs)
+	expectedStateCh := make(chan paths)
 
 	// Randomly modify "./base" and make sure modifications are picked up by Watch
 	go func() {
 		time.Sleep(time.Second) // yield to calling goro
 		for i := 0; i < 100; i++ {
-			// fmt.Printf("len(expected): %d\n", len(expected))
 			if len(expected) == 1 || testRand.Int31n(2) > 0 {
 				baby := p.Join(expected.Pick(), fmt.Sprintf("%03d", i))
 				CheckNil(t, os.Mkdir(baby, 0755))
-				fmt.Printf("mkdir %q\n", baby)
 				expected.Add(baby)
 			} else {
 				dead := expected.Pick( /* except */ "base")
 				CheckNil(t, os.RemoveAll(dead))
-				fmt.Printf("rm -r %q\n", dead)
 				expected.Rm(dead)
 			}
 			expectedStateCh <- expected.Copy()
@@ -205,13 +200,14 @@ func TestFuzz(t *testing.T) {
 	CheckNil(t, os.Mkdir("base", 0755))
 	eventCh := make(chan WatchEvent)
 	go func() {
-		CheckNil(t, Watch("base", func(e WatchEvent) error {
+		err := Watch("base", func(e WatchEvent) error {
 			if e.Type != Create && e.Type != Delete {
 				return fmt.Errorf("unexpected event: %s", e)
 			}
 			eventCh <- e
 			return nil
-		}))
+		})
+		CheckEq(t, err.Error(), "watch root \"base\" has been deleted")
 	}()
 
 	// read through expected states and try to reach each one--note that
@@ -224,11 +220,12 @@ func TestFuzz(t *testing.T) {
 		// Apply pending watch events until there are none left
 		select {
 		case e := <-eventCh:
-			fmt.Printf("Event: %s\n", e)
 			if e.Type == Create {
 				actual.Add(e.Path)
 			} else if e.Type == Delete {
 				actual.Rm(e.Path)
+			} else {
+				t.Fatalf("unexpected event type: " + e.String())
 			}
 			continue
 		case <-time.After(100 * time.Millisecond):
@@ -258,28 +255,24 @@ func TestFuzz(t *testing.T) {
 // shortly after being created that cause it to panic.
 func TestFuzzAsync(t *testing.T) {
 	CheckNil(t, os.RemoveAll("base"))
-	var expected dirs = map[string]struct{}{
+	var expected paths = map[string]struct{}{
 		"base": struct{}{},
 	}
-	expectedCreates, expectedDeletes := make(dirs), make(dirs)
-	actualCreates, actualDeletes := make(dirs), make(dirs)
-	done := make(chan struct{})
 
 	// Randomly modify "./base" and make sure modifications are picked up by Watch
+	expectedCreates, expectedDeletes := make(paths), make(paths)
+	done := make(chan struct{})
 	go func() {
 		time.Sleep(time.Second) // yield to calling goro
 		for i := 0; i < 100; i++ {
-			// fmt.Printf("len(expected): %d\n", len(expected))
 			if len(expected) == 1 || testRand.Int31n(2) > 0 {
 				baby := p.Join(expected.Pick(), fmt.Sprintf("%03d", i))
 				CheckNil(t, os.Mkdir(baby, 0755))
-				fmt.Printf("mkdir %q\n", baby)
 				expected.Add(baby)
 				expectedCreates.Add(baby)
 			} else {
 				dead := expected.Pick( /* except */ "base")
 				CheckNil(t, os.RemoveAll(dead))
-				fmt.Printf("rm -r %q\n", dead)
 				for path := range expected {
 					if strings.HasPrefix(path, dead) {
 						expectedDeletes.Add(path) // inotify generates events for children
@@ -296,30 +289,78 @@ func TestFuzzAsync(t *testing.T) {
 	}()
 
 	// Initiate Watch
-	// N.B. we pass WatchEvents through a channel because a single operation above
-	// may generate multiple events (e.g. "delete foo/" would generate Deletes
-	// events for "foo/a/", "foo/b/", and "foo/c/"), and we want to apply all
-	// events generated by a single operation before comparing end states.
-	//
 	// TODO(msteffen) right now there's no way to cancel a watch (in part becase
 	// there's no way to timeout of the read() syscall that it waits on). So just
 	// leak a goro.
+	actualCreates, actualDeletes := make(paths), make(paths)
 	CheckNil(t, os.Mkdir("base", 0755))
 	go func() {
-		CheckNil(t, Watch("base", func(e WatchEvent) error {
+		err := Watch("base", func(e WatchEvent) error {
 			// Apply pending watch events until we match 'expected'
-			fmt.Printf("Event: %s\n", e)
 			if e.Type == Create {
 				actualCreates.Add(e.Path)
 			} else if e.Type == Delete {
 				actualDeletes.Add(e.Path)
+			} else {
+				t.Fatalf("unexpected event type: " + e.String())
 			}
 			return nil
-		}))
+		})
+		CheckEq(t, err.Error(), "watch root \"base\" has been deleted")
 	}()
 
 	<-done
 	time.Sleep(time.Second) // hack -- wait for pending WatchEvents to be applied
 	CheckEq(t, actualCreates, expectedCreates)
 	CheckEq(t, actualDeletes, expectedDeletes)
+}
+
+func TestFiles(t *testing.T) {
+	CheckNil(t, os.RemoveAll("base"))
+	done := make(chan struct{})
+
+	// Randomly modify "./base" and make sure modifications are picked up by Watch
+	expectedCreates, expectedModifications := make(paths), make(paths)
+	go func() {
+		time.Sleep(time.Second) // yield to calling goro
+		for i := 0; i < 100; i++ {
+			baby := fmt.Sprintf("base/%03d", i)
+			f, err := os.Create(baby)
+			CheckNil(t, err)
+			CheckNil(t, f.Close())
+			expectedCreates.Add(baby)
+		}
+		for i := 0; i < 100; i++ {
+			adult := fmt.Sprintf("base/%03d", i)
+			f, err := os.OpenFile(adult, os.O_WRONLY|os.O_APPEND, 0)
+			CheckNil(t, err)
+			f.Write([]byte("x"))
+			CheckNil(t, f.Close())
+			expectedModifications.Add(adult)
+		}
+		close(done)
+	}()
+
+	// Initiate Watch
+	actualCreates, actualModifications := make(paths), make(paths)
+	CheckNil(t, os.Mkdir("base", 0755))
+	go func() {
+		err := Watch("base", func(e WatchEvent) error {
+			// Apply pending watch events until we match 'expected'
+			if e.Type == Create {
+				actualCreates.Add(e.Path)
+			} else if e.Type == Modify {
+				actualModifications.Add(e.Path)
+			} else {
+				t.Fatalf("unexpected event type: " + e.String())
+			}
+			return nil
+		})
+		CheckEq(t, err.Error(), "watch root \"base\" has been deleted")
+	}()
+
+	<-done
+	time.Sleep(time.Second) // hack -- wait for pending WatchEvents to be applied
+	CheckEq(t, actualCreates, expectedCreates)
+	CheckEq(t, actualModifications, expectedModifications)
 }

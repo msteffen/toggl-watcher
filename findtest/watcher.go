@@ -81,8 +81,7 @@ func Watch(path string, cb func(WatchEvent) error) error {
 		watchFD:     fd,
 		wdToPath:    make(map[int]string),
 		watchedDirs: make(map[string]struct{}),
-		// addQ:        strqueue.NewQ(),
-		cb: cb,
+		cb:          cb,
 	}
 	// w.add(path) may call w.cb several times and set up several watches before
 	// we get to run(), but shouldn't call w.cb on 'path'
@@ -123,11 +122,6 @@ type watcher struct {
 	// an inverted index)
 	watchedDirs map[string]struct{}
 
-	// // addQ is a queue of paths that need to be watched (watcher, in effect, does
-	// // a breadth-first traversal of added directories, and addQ stores paths
-	// // yet-to-be traversed)
-	// addQ *strqueue.Q
-
 	// cb is the callback that is given each WatchEvent
 	cb func(WatchEvent) error
 }
@@ -143,9 +137,7 @@ func (w *watcher) run() error {
 	var end int
 	buf := make([]byte, inotifyBufSz*10)
 	for {
-		// fmt.Printf("unix.Read(%d, [..%d..])\n", w.watchFD, len(buf[end:]))
 		n, err := unix.Read(w.watchFD, buf[end:])
-		// fmt.Printf("unix.Read(%d, [..%d..]) -> %d, %v\n", w.watchFD, len(buf[end:]), n, err)
 		if err != nil {
 			return fmt.Errorf("Error reading watch FD: %v", err)
 		}
@@ -172,8 +164,6 @@ func (w *watcher) run() error {
 //   so
 // - Callers must ensure that 'path's suffix is '/' iff 'path' is a directory
 func (w *watcher) add(e WatchEvent) (err error) {
-	fmt.Printf("add(%s)\n", e)
-	defer func() { fmt.Printf("add(%s) -> %v\n", e, err) }()
 	if e.Type != Create {
 		panic(fmt.Sprintf("add(%s) called with non-Create event", e))
 	}
@@ -273,7 +263,6 @@ func (w *watcher) forEachEvent(buf []byte, cb func(WatchEvent) error) (end int, 
 				break
 			}
 		}
-		// fmt.Printf("unix event: %s\n", w.Render(event, name))
 		we, err := w.toWatchEvent(event, name)
 		if err != nil {
 			return 0, err
@@ -299,7 +288,6 @@ func (w *watcher) forEachEvent(buf []byte, cb func(WatchEvent) error) (end int, 
 
 // w.modelMu must be locked before calling this
 func (w *watcher) applyWatchEvent(we WatchEvent) (err error) {
-	fmt.Printf("applyWatchEvent(%s)\n", we)
 	// 1a. if we.Type == Modify, just call w.cb immediately, there's no extra
 	// watch handling that needs to be done
 	if we.Type == Modify {
@@ -331,8 +319,11 @@ func (w *watcher) applyWatchEvent(we WatchEvent) (err error) {
 		return err
 	}
 
-	// add(we) handles Create events, including invoking w.cb
-	return w.add(we)
+	// recursively descend into 'path' if needed
+	if we.IsDir {
+		return w.add(we)
+	}
+	return nil
 }
 
 func (w *watcher) toWatchEvent(e *unix.InotifyEvent, name string) (WatchEvent, error) {
